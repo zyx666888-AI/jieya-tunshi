@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>解压吞噬 · Hole Battle</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #10141c; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+
+  /* ---------- HUD ---------- */
+  .hud { position: fixed; z-index: 10; pointer-events: none; user-select: none; }
+  #timerBox { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #timer { font-size: 34px; font-weight: 800; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.6); letter-spacing: 2px; }
+  #timer.danger { color: #ff5252; animation: pulse .8s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.12); } }
+
+  #board { top: 12px; right: 12px; width: 210px; background: rgba(10,14,22,.62); border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.08); pointer-events: auto; cursor: pointer; }
+  #boardHead { font-weight: 700; color: #dfe6f0; font-size: 13px; padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 3px; user-select: none; }
+  #board.collapsed #boardRows { display: none; }
+  #board.collapsed { width: auto; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: #dfe6f0; font-size: 13px; }
+  .row.me { color: #ffd54a; font-weight: 700; }
+  .rank { width: 18px; color: #8fa0b8; font-weight: 700; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 6px currentColor; }
+  .rname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rscore { font-weight: 700; }
+
+  #scoreBox { bottom: 14px; left: 14px; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  #scoreBox .s1 { font-size: 14px; color: #b9c6d8; }
+  #scoreBox .s2 { font-size: 26px; font-weight: 800; }
+
+  #staminaBox { bottom: 86px; left: 14px; }
+  #stTrack { width: 190px; height: 12px; background: rgba(10,14,22,.7); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; overflow: hidden; }
+  #stFill { height: 100%; width: 100%; background: linear-gradient(90deg, #38c6ff, #7c5cff); border-radius: 8px; transition: width .08s linear; }
+  #stFill.low { background: linear-gradient(90deg, #ff7a5c, #e05243); }
+
+  #endRunBtn { top: 14px; left: 14px; pointer-events: auto; cursor: pointer; background: rgba(10,14,22,.7); border: 1px solid rgba(255,255,255,.25); color: #dfe6f0; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-family: inherit; }
+  #endRunBtn:hover { border-color: rgba(255,255,255,.55); color: #fff; }
+
+  #pauseBtn { top: 14px; left: 14px; pointer-events: auto; cursor: pointer; background: rgba(10,14,22,.7); border: 1px solid rgba(255,255,255,.25); color: #dfe6f0; border-radius: 10px; padding: 8px 14px; font-size: 14px; font-family: inherit; }
+  #pauseBtn:hover { border-color: rgba(255,255,255,.55); color: #fff; }
+  #endRunBtn { top: 60px !important; }
+  .btn-col { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+  .btn-col .btn.sub-btn { margin-left: 0; }
+
+  #boostBtn { position: fixed; right: 18px; bottom: 170px; z-index: 11; width: 66px; height: 66px; border-radius: 50%; border: 2px solid rgba(124,92,255,.7); background: rgba(10,14,22,.65); color: #cdbcff; font-size: 26px; pointer-events: auto; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #boostBtn:active { background: rgba(124,92,255,.35); }
+
+  /* 开始按钮：独立放在屏幕最右侧 */
+  /* 开始按钮：独立放在屏幕最右侧（相对窗口固定，面板滚动时不动） */
+  #startBtn { position: fixed; right: 5vw; top: 50%; transform: translateY(-50%); margin: 0; padding: 20px 44px; font-size: 22px; letter-spacing: 5px; border-radius: 18px; z-index: 31; }
+  #startBtn:hover { transform: translateY(-50%) scale(1.04); }
+  #startBtn:active { transform: translateY(-50%) scale(.97); }
+  @media (max-width: 700px) {
+    #startBtn { right: 50%; top: auto; bottom: 4vh; transform: translate(50%, 0); padding: 14px 34px; font-size: 17px; }
+    #startBtn:hover { transform: translate(50%, 0) scale(1.04); }
+    #startBtn:active { transform: translate(50%, 0) scale(.97); }
+  }
+
+  #miniMap { position: fixed; right: 12px; bottom: 12px; z-index: 10; width: 140px; height: 140px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15); background: rgba(10,14,22,.7); pointer-events: none; }
+
+  /* ---------- 弹幕提示 ---------- */
+  #toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 12; color: #fff; font-size: 16px; font-weight: 700; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #milestone { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 22; color: #ffd54a; font-size: 28px; font-weight: 900; text-align: center; max-width: 88vw; line-height: 1.5; text-shadow: 0 3px 14px rgba(0,0,0,.75), 0 0 26px rgba(255,190,60,.45); opacity: 0; transition: opacity .35s; pointer-events: none; }
+
+  /* ---------- 面板 ---------- */
+  .panel { position: fixed; inset: 0; z-index: 30; display: flex; overflow-y: auto; background: radial-gradient(ellipse at center, rgba(30,36,54,.75), rgba(8,10,16,.85)); }
+  .card { margin: auto; width: min(330px, 90vw); background: linear-gradient(160deg, #1a2130, #121722); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 20px 22px; text-align: center; box-shadow: 0 16px 50px rgba(0,0,0,.55); flex-shrink: 0; }
+  .card h1 { color: #fff; font-size: 24px; letter-spacing: 3px; margin-bottom: 4px; }
+  .card h1 span { background: linear-gradient(90deg, #7c5cff, #38c6ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card .sub { color: #8fa0b8; font-size: 12px; margin-bottom: 14px; line-height: 1.6; }
+  .card .tips { text-align: left; color: #a8b6c9; font-size: 11.5px; line-height: 1.85; background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 12px; margin-bottom: 14px; }
+  .btn { display: inline-block; pointer-events: auto; cursor: pointer; border: none; border-radius: 12px; padding: 10px 34px; font-size: 15px; font-weight: 800; letter-spacing: 3px; color: #fff; background: linear-gradient(135deg, #7c5cff, #4f8cff); box-shadow: 0 6px 18px rgba(90,110,255,.4); transition: transform .15s; }
+  .btn:hover { transform: translateY(-2px) scale(1.03); }
+  .btn:active { transform: scale(.97); }
+  .btn.sub-btn { background: transparent; border: 1px solid rgba(255,255,255,.25); box-shadow: none; color: #b9c6d8; font-size: 13px; padding: 9px 26px; margin-left: 10px; }
+  .btn.sub-btn:hover { border-color: rgba(255,255,255,.5); color: #fff; }
+  #resultList { margin: 12px 0 18px; }
+  #resultList .row { font-size: 13px; padding: 5px 4px; }
+  .maps { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 16px; }
+  .mapBtn { pointer-events: auto; cursor: pointer; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #b9c6d8; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-family: inherit; transition: all .15s; }
+  .mapBtn:hover { border-color: rgba(255,255,255,.4); color: #fff; }
+  .mapBtn.sel { background: linear-gradient(135deg, #7c5cff, #4f8cff); color: #fff; border-color: transparent; font-weight: 700; }
+  .pickLabel { color: #8fa0b8; font-size: 12px; margin-bottom: 6px; }
+  .nameInput { pointer-events: auto; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 14px; width: 100%; text-align: center; font-family: inherit; margin-bottom: 12px; outline: none; transition: border-color .15s; }
+  .nameInput:focus { border-color: #7c5cff; }
+  .nameInput::placeholder { color: #5f6e82; }
+  #stylePrev { display: block; margin: 0 auto 10px; width: 90px; height: 55px; }
+  .styleBtn { display: inline-flex; align-items: center; gap: 5px; }
+  .styleBtn .dot { width: 10px; height: 10px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="timerBox" class="hud hidden"><div id="timer">3:00</div></div>
+<div id="board" class="hud hidden"><div id="boardHead">🏆 排行榜 ▾</div><div id="boardRows"></div></div>
+<div id="scoreBox" class="hud hidden"><div class="s1">我的得分</div><div class="s2" id="myScore">0</div></div>
+<div id="staminaBox" class="hud hidden">
+  <div class="s1" id="stLabel" style="font-size:12px;color:#b9c6d8;margin-bottom:4px;">体力 · 长按空格加速</div>
+  <div id="stTrack"><div id="stFill"></div></div>
+</div>
+<button id="endRunBtn" class="hud hidden">🏁 结束本局</button>
+<button id="pauseBtn" class="hud hidden">⏸️</button>
+<button id="boostBtn" class="hud hidden">💨</button>
+<canvas id="miniMap" class="hidden" width="140" height="140"></canvas>
+<div id="toast"></div>
+<div id="milestone"></div>
+
+<div id="startPanel" class="panel">
+  <div class="card">
+    <h1>解<span>压</span>吞噬</h1>
+    <div class="sub">吞噬万物，成为最强大的黑洞！</div>
+    <div class="pickLabel" style="text-align:left;">我的昵称</div>
+    <input id="nameInput" class="nameInput" maxlength="8" placeholder="我（最多 8 个字）">
+    <div class="tips">
+      🖱️ 移动鼠标 / 手指拖动 —— 控制黑洞移动<br>
+      ⌨️ 也支持 WASD / 方向键，<b>长按空格加速</b>（体力上限随积分成长）<br>
+      🟢 绿圈 = 可以吞噬 &nbsp;⚪ 白圈 = 还不够大<br>
+      🕳️ 小心！比你大的黑洞可以把你也吞掉<br>
+      🔄 吃掉的东西 20 秒后会在原地重新出现<br>
+      ⏸️ 游戏中按 <b>P 键</b> 暂停 / 退出到主菜单
+    </div>
+    <div class="pickLabel">选择模式</div>
+    <div class="maps" id="modePick">
+      <button class="mapBtn sel" data-mode="timed">⏱️ 限时模式 · 3 分钟</button>
+      <button class="mapBtn" data-mode="endless">♾️ 无尽模式</button>
+    </div>
+    <div class="pickLabel">选择地图</div>
+    <div class="maps" id="mapPick">
+      <button class="mapBtn sel" data-map="street">🏙️ 街道</button>
+      <button class="mapBtn" data-map="airport">✈️ 飞机场</button>
+      <button class="mapBtn" data-map="subway">🚇 地铁站</button>
+      <button class="mapBtn" data-map="railway">🚄 高铁站</button>
+    </div>
+    <div class="pickLabel">黑洞外观</div>
+    <canvas id="stylePrev" width="180" height="110"></canvas>
+    <div class="maps" id="stylePick"></div>
+  </div>
+  <button class="btn" id="startBtn">开 始 游 戏</button>
+</div>
+
+<div id="endPanel" class="panel hidden">
+  <div class="card">
+    <h1 id="endTitle">游戏结束</h1>
+    <div class="sub" id="endSub">最终排名</div>
+    <div id="resultList"></div>
+    <button class="btn" id="againBtn">再 来 一 局</button>
+  </div>
+</div>
+
+<div id="deathPanel" class="panel hidden" style="background: rgba(8,10,16,.5);">
+  <div class="card">
+    <h1>💀 你被吞掉了</h1>
+    <div class="sub" id="deathSub"></div>
+    <div class="sub" id="deathTaunt" style="color:#ffd54a;font-weight:700;"></div>
+    <button class="btn" id="deathRestartBtn">再 来 一 局</button>
+    <button class="btn sub-btn" id="spectateBtn">继续观战</button>
+  </div>
+</div>
+<div id="clearPanel" class="panel hidden" style="background: rgba(8,10,16,.55);">
+  <div class="card">
+    <h1>👑 制霸全场</h1>
+    <div class="sub" id="clearSub"></div>
+    <button class="btn" id="clearContinueBtn">继 续 玩</button>
+    <button class="btn sub-btn" id="clearLeaveBtn">离开对局</button>
+  </div>
+</div>
+
+<div id="pausePanel" class="panel hidden" style="background: rgba(8,10,16,.6);">
+  <div class="card">
+    <h1>⏸️ 已暂停</h1>
+    <div class="sub">按 P 键或点击「继续游戏」返回</div>
+    <div class="btn-col">
+      <button class="btn" id="resumeBtn">继续游戏</button>
+      <button class="btn sub-btn" id="restartBtn">重新开始</button>
+      <button class="btn sub-btn" id="quitBtn">退出到主菜单</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+// ================= 基础 =================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const mmCanvas = document.getElementById('miniMap');
+const mmCtx = mmCanvas.getContext('2d');
+let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+const MAP = 7200;              // 地图尺寸（面积约为原来的 5 倍）
+const GAME_TIME = 180;         // 限时模式：180 秒
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ================= 世界物体 =================
+// kind: 类别决定分数与体积, s: 半径尺度, 用 <g> SVG path 不好搞，直接用矢量绘制函数
+const KINDS = {
+  hydrant:  { pts: 4,  s: 12,  color: '#e05243', draw: drawHydrant },
+  cone:     { pts: 4,  s: 13,  color: '#ef8a3c', draw: drawCone },
+  mailbox:  { pts: 6,  s: 15,  color: '#4f8cff', draw: drawMailbox },
+  bench:    { pts: 8,  s: 22,  color: '#a8794e', draw: drawBench },
+  lamp:     { pts: 10, s: 26,  color: '#ffd54a', draw: drawLamp },
+  bush:     { pts: 10, s: 24,  color: '#5fae5f', draw: drawBush },
+  tree:     { pts: 15, s: 34,  color: '#3f9648', draw: drawTree },
+  car:      { pts: 22, s: 42,  color: '#546877', draw: drawCar },
+  kiosk:    { pts: 35, s: 62,  color: '#c96a3f', draw: drawKiosk },
+  house:    { pts: 60, s: 95,  color: '#8a6ea0', draw: drawHouse },
+  building: { pts: 120,s: 150, color: '#5f6f9e', draw: drawBuilding },
+  tower:    { pts: 220,s: 210, color: '#47598c', draw: drawTower },
+  plane:    { pts: 150,s: 115, color: '#dfe6ee', draw: drawPlane },
+  train:    { pts: 170,s: 125, color: '#e8ecf2', draw: drawTrain },
+  luggage:  { pts: 8,  s: 18,  color: '#7a6a55', draw: drawLuggage },
+  person:   { pts: 5,  s: 10,  color: '#e05243', draw: drawPerson },
+  police:   { pts: 10, s: 11,  color: '#2e5aa8', draw: drawPolice },
+};
+const KIND_LIST = Object.keys(KINDS);
+
+function drawHydrant(c, s, col) { c.fillStyle = col; c.fillRect(-s*.5, -s*.8, s, s*1.6); c.beginPath(); c.arc(0, -s*.8, s*.55, 0, 7); c.fill(); c.fillRect(-s*.8, -s*.1, s*1.6, s*.3); }
+function drawCone(c, s, col) { c.fillStyle = col; c.beginPath(); c.moveTo(0, -s); c.lineTo(s*.75, s*.9); c.lineTo(-s*.75, s*.9); c.closePath(); c.fill(); c.fillStyle = '#fff'; c.fillRect(-s*.5, -s*.15, s, s*.28); }
+function drawMailbox(c, s, col) { c.fillStyle = col; c.fillRect(-s*.55, -s*.4, s*1.1, s*1.2); c.beginPath(); c.arc(0, -s*.4, s*.55, Math.PI, 0); c.fill(); c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(-s*.14, -s*.3, s*.28, s*.5); }
+function drawBench(c, s, col) { c.fillStyle = col; c.fillRect(-s, -s*.35, s*2, s*.5); c.fillRect(-s*.9, s*.15, s*.25, s*.6); c.fillRect(s*.65, s*.15, s*.25, s*.6); c.fillRect(-s, -s*.85, s*2, s*.3); }
+function drawLamp(c, s, col) { c.strokeStyle = '#666'; c.lineWidth = s*.12; c.beginPath(); c.moveTo(0, s); c.lineTo(0, -s*.5); c.stroke(); c.fillStyle = col; c.beginPath(); c.arc(0, -s*.6, s*.3, 0, 7); c.fill(); c.fillStyle = 'rgba(255,213,74,.15)'; c.beginPath(); c.arc(0, -s*.6, s*.9, 0, 7); c.fill(); }
+function drawBush(c, s, col) { c.fillStyle = col; c.beginPath(); c.arc(-s*.4, s*.2, s*.55, 0, 7); c.arc(s*.4, s*.2, s*.55, 0, 7); c.arc(0, -s*.25, s*.6, 0, 7); c.fill(); }
+function drawTree(c, s, col) { c.fillStyle = '#7a5230'; c.fillRect(-s*.09, 0, s*.18, s*.9); c.fillStyle = col; c.beginPath(); c.arc(0, -s*.35, s*.62, 0, 7); c.fill(); c.fillStyle = 'rgba(255,255,255,.14)'; c.beginPath(); c.arc(-s*.2, -s*.5, s*.3, 0, 7); c.fill(); }
+function drawCar(c, s, col) {
+  c.fillStyle = col; roundRect(c, -s, -s*.5, s*2, s, s*.3); c.fill();
+  c.fillStyle = 'rgba(255,255,255,.35)'; roundRect(c, -s*.25, -s*.42, s*.8, s*.84, s*.15); c.fill();
+  c.fillStyle = '#222'; c.beginPath(); c.arc(-s*.62, s*.52, s*.16, 0, 7); c.arc(s*.62, s*.52, s*.16, 0, 7); c.arc(-s*.62, -s*.52, s*.16, 0, 7); c.arc(s*.62, -s*.52, s*.16, 0, 7); c.fill();
+}
+function drawKiosk(c, s, col) { c.fillStyle = col; c.fillRect(-s*.7, -s*.55, s*1.4, s*1.3); c.fillStyle = '#e8e2d4'; c.beginPath(); c.moveTo(-s*.9, -s*.5); c.lineTo(0, -s*1.05); c.lineTo(s*.9, -s*.5); c.closePath(); c.fill(); c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(-s*.3, -s*.1, s*.6, s*.85); }
+function drawHouse(c, s, col) { c.fillStyle = col; c.fillRect(-s*.75, -s*.45, s*1.5, s*1.25); c.fillStyle = '#b8524a'; c.beginPath(); c.moveTo(-s*.9, -s*.45); c.lineTo(0, -s*1.15); c.lineTo(s*.9, -s*.45); c.closePath(); c.fill(); c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(-s*.45, -s*.15, s*.34, s*.34); c.fillRect(s*.12, -s*.15, s*.34, s*.34); c.fillStyle = '#5a4632'; c.fillRect(-s*.14, s*.3, s*.28, s*.5); }
+function drawBuilding(c, s, col) { c.fillStyle = col; c.fillRect(-s*.8, -s*.8, s*1.6, s*1.7); c.fillStyle = 'rgba(255,255,255,.16)'; c.fillRect(-s*.8, -s*.8, s*1.6, s*.22); c.fillStyle = 'rgba(255,235,150,.75)';
+  for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) c.fillRect(-s*.62 + q*s*.36, -s*.55 + r*s*.4, s*.2, s*.24);
+}
+function drawTower(c, s, col) { c.fillStyle = col; c.fillRect(-s*.5, -s*.95, s, s*1.95); c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(-s*.5, -s*.95, s*.28, s*1.95); c.fillStyle = 'rgba(160,220,255,.8)';
+  for (let r = 0; r < 7; r++) for (let q = 0; q < 2; q++) c.fillRect(-s*.32 + q*s*.42, -s*.8 + r*s*.26, s*.22, s*.14);
+  c.fillStyle = '#e05243'; c.beginPath(); c.arc(0, -s*1.02, s*.07, 0, 7); c.fill();
+}
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r); c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath(); }
+// 小人：会走动、会逃跑的路人（phase 用于摆腿/摆手动画）
+const SHIRT_COLS = ['#e05243', '#4f8cff', '#5fae5f', '#ffd54a', '#c96a3f', '#9b6fd0', '#55c4d6', '#e88ab0', '#f2f2f2', '#5a6b52'];
+function drawPerson(c, s, col, phase) {
+  phase = phase || 0;
+  const swing = Math.sin(phase) * s * .4;
+  // 腿
+  c.strokeStyle = '#2c3444'; c.lineWidth = s * .22; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(0, s * .1); c.lineTo(swing, s * .85);
+  c.moveTo(0, s * .1); c.lineTo(-swing, s * .85);
+  c.stroke();
+  // 身体（上衣）
+  c.fillStyle = col; roundRect(c, -s * .32, -s * .45, s * .64, s * .62, s * .2); c.fill();
+  // 摆动的手臂
+  c.strokeStyle = col; c.lineWidth = s * .16;
+  c.beginPath();
+  c.moveTo(-s * .28, -s * .28); c.lineTo(-s * .28 - swing * .8, s * .18);
+  c.moveTo(s * .28, -s * .28); c.lineTo(s * .28 + swing * .8, s * .18);
+  c.stroke();
+  // 头
+  c.fillStyle = '#e8c9a8'; c.beginPath(); c.arc(0, -s * .68, s * .26, 0, 7); c.fill();
+  c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(0, -s * .78, s * .24, Math.PI, 0); c.fill(); // 头发
+}
+// 警察小人：蓝色制服 + 警帽，会追着黑洞跑
+function drawPolice(c, s, col, phase) {
+  phase = phase || 0;
+  const swing = Math.sin(phase) * s * .45;
+  c.strokeStyle = '#1c2438'; c.lineWidth = s * .24; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(0, s * .1); c.lineTo(swing, s * .85);
+  c.moveTo(0, s * .1); c.lineTo(-swing, s * .85);
+  c.stroke();
+  // 制服身体
+  c.fillStyle = '#2e5aa8'; roundRect(c, -s * .34, -s * .45, s * .68, s * .62, s * .2); c.fill();
+  c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(-s * .1, -s * .4, s * .2, s * .5); // 衬衫扣线
+  c.fillStyle = '#ffd54a'; c.beginPath(); c.arc(s * .18, -s * .22, s * .09, 0, 7); c.fill(); // 警徽
+  // 摆动的手臂
+  c.strokeStyle = '#2e5aa8'; c.lineWidth = s * .16;
+  c.beginPath();
+  c.moveTo(-s * .3, -s * .28); c.lineTo(-s * .3 - swing * .85, s * .18);
+  c.moveTo(s * .3, -s * .28); c.lineTo(s * .3 + swing * .85, s * .18);
+  c.stroke();
+  // 头 + 警帽
+  c.fillStyle = '#e8c9a8'; c.beginPath(); c.arc(0, -s * .66, s * .26, 0, 7); c.fill();
+  c.fillStyle = '#1e3a6e'; c.fillRect(-s * .32, -s * .98, s * .64, s * .22); // 帽顶
+  c.fillRect(-s * .38, -s * .8, s * .76, s * .1);                            // 帽檐
+  c.fillStyle = '#ffd54a'; c.beginPath(); c.arc(0, -s * .88, s * .08, 0, 7); c.fill(); // 帽徽
+}
+function drawPlane(c, s, col) {
+  c.fillStyle = col;
+  roundRect(c, -s*.17, -s, s*.34, s*1.9, s*.17); c.fill();          // 机身
+  c.beginPath(); c.moveTo(-s*.92, s*.12); c.lineTo(0, -.12*s); c.lineTo(s*.92, s*.12); c.lineTo(s*.7, s*.32); c.lineTo(-s*.7, s*.32); c.closePath(); c.fill(); // 主翼
+  c.beginPath(); c.moveTo(-s*.42, s*.85); c.lineTo(0, s*.6); c.lineTo(s*.42, s*.85); c.lineTo(0, s*.92); c.closePath(); c.fill(); // 尾翼
+  c.fillStyle = 'rgba(150,200,240,.9)'; roundRect(c, -s*.1, -s*.72, s*.2, s*.3, s*.07); c.fill(); // 驾驶舱
+  c.fillStyle = 'rgba(255,120,90,.9)'; c.beginPath(); c.arc(0, -s*.98, s*.06, 0, 7); c.fill();
+}
+function drawTrain(c, s, col) {
+  c.fillStyle = col; roundRect(c, -s*1.1, -s*.42, s*2.2, s*.84, s*.22); c.fill();
+  c.fillStyle = 'rgba(255,255,255,.28)'; c.fillRect(-s*1.1, s*.14, s*2.2, s*.14);
+  c.fillStyle = 'rgba(140,195,255,.8)';
+  for (let i = -2; i <= 1; i++) { roundRect(c, i*s*.42 + s*.06, -s*.26, s*.3, s*.3, s*.06); c.fill(); }
+  c.fillStyle = 'rgba(190,225,255,.9)'; roundRect(c, s*.72, -s*.28, s*.3, s*.36, s*.08); c.fill();
+}
+function drawLuggage(c, s, col) {
+  c.fillStyle = col; roundRect(c, -s*.8, -s*.5, s*1.6, s*.75, s*.12); c.fill();
+  c.fillStyle = '#4a3826'; c.fillRect(-s*.58, -s*.98, s*.48, s*.46);
+  c.fillStyle = '#6d5138'; c.fillRect(-s*.05, -s*.88, s*.44, s*.36);
+  c.fillStyle = '#222'; c.beginPath(); c.arc(-s*.5, s*.3, s*.13, 0, 7); c.arc(s*.5, s*.3, s*.13, 0, 7); c.fill();
+}
+
+// ================= 状态 =================
+let world = { objs: [], holes: [], particles: [], roads: [] };
+let me = null;
+let state = 'menu'; // menu | play | over
+let timeLeft = GAME_TIME;
+let cam = { x: MAP/2, y: MAP/2, zoom: 1 };
+let input = { mx: 0, my: 0, useMouse: false, keys: {} };
+let lastT = 0, idTicker = 1;
+
+const BOT_NAMES = ['贪吃蛇洞', '深渊巨口', '小旋涡', '星际虫洞', '万物吞噬者', '混沌之眼', '次元裂缝', '饕餮', '银河黑洞', '虚无之口', '吞噬之星', '暗影漩涡'];
+const BOT_COUNT = 10;
+
+// ================= 黑洞样式 =================
+const HOLE_STYLES = [
+  { name: '星云紫', rim: '#3a2b8f', glow: 'rgba(160,130,255,.9)', ring: '#9f85ff', pattern: 'spiral' },
+  { name: '烈焰橙', rim: '#7a2e12', glow: 'rgba(255,150,80,.9)',  ring: '#ff9c52', pattern: 'rays'   },
+  { name: '翡翠绿', rim: '#14502e', glow: 'rgba(80,230,140,.9)',  ring: '#57e394', pattern: 'rings'  },
+  { name: '冰晶蓝', rim: '#153e75', glow: 'rgba(110,200,255,.9)', ring: '#6fc6ff', pattern: 'star'   },
+  { name: '樱花粉', rim: '#7a2350', glow: 'rgba(255,130,180,.9)', ring: '#ff85b3', pattern: 'waves'  },
+  { name: '熔金',   rim: '#6e5210', glow: 'rgba(255,210,90,.9)',  ring: '#ffd75e', pattern: 'rays'   },
+  { name: '血月红', rim: '#5c0e1c', glow: 'rgba(240,90,105,.9)',  ring: '#f2657a', pattern: 'rings'  },
+  { name: '极光青', rim: '#0e4a4a', glow: 'rgba(80,225,210,.9)',  ring: '#55e6d5', pattern: 'waves'  },
+  { name: '暗夜黑', rim: '#1a1a2e', glow: 'rgba(200,200,220,.7)', ring: '#c9c9dd', pattern: 'star'   },
+  { name: '深海蓝', rim: '#0e2f5c', glow: 'rgba(90,150,240,.85)', ring: '#5a96f0', pattern: 'spiral' },
+  { name: '紫罗兰', rim: '#4a1060', glow: 'rgba(210,110,255,.9)', ring: '#d27eff', pattern: 'rings'  },
+];
+
+// ================= 可选地图 =================
+const MAPS = {
+  street: {
+    label: '🏙️ 街道', ground: '#1c2430', groundAlt: '#202b38',
+    build(place, cell, blocks) {
+      // 规整道路网格
+      for (let i = 1; i < blocks; i++) {
+        world.roads.push({ h: true, p: i * cell });
+        world.roads.push({ h: false, p: i * cell });
+      }
+      for (let bx = 0; bx < blocks; bx++) {
+        for (let by = 0; by < blocks; by++) {
+          const x0 = bx * cell, y0 = by * cell;
+          const roll = (bx * 3 + by * 5) % 3; // 确定性分区，布局整齐
+          if (roll === 0) {
+            // 商业区：高楼沿上边缘一排，树沿下边缘一排
+            place('building', x0 + cell * .22, y0 + cell * .28, 0);
+            place('tower',    x0 + cell * .5,  y0 + cell * .28, 0);
+            place('building', x0 + cell * .78, y0 + cell * .28, 0);
+            for (let i = 0; i < 4; i++) place('tree', x0 + cell * (.16 + i * .23), y0 + cell * .76, 0);
+          } else if (roll === 1) {
+            // 住宅区：两行三列对齐
+            for (let r = 0; r < 2; r++) for (let q = 0; q < 3; q++)
+              place('house', x0 + cell * (.22 + q * .28), y0 + cell * (.3 + r * .34), 0);
+            for (let i = 0; i < 3; i++) place('bush', x0 + cell * (.2 + i * .3), y0 + cell * .84, 0);
+          } else {
+            // 街道区：车辆沿路整齐停靠，设施成行
+            for (let i = 0; i < 4; i++) place('car', x0 + cell * (.2 + i * .2), y0 + cell * .1, Math.PI);
+            for (let i = 0; i < 4; i++) place('car', x0 + cell * (.2 + i * .2), y0 + cell * .9, 0);
+            place('lamp',    x0 + cell * .12, y0 + cell * .5, 0);
+            place('hydrant', x0 + cell * .88, y0 + cell * .5, 0);
+            place('kiosk',   x0 + cell * .38, y0 + cell * .5, 0);
+            place('bench',   x0 + cell * .58, y0 + cell * .5, 0);
+            place('mailbox', x0 + cell * .74, y0 + cell * .5, 0);
+          }
+        }
+      }
+    }
+  },
+  airport: {
+    label: '✈️ 飞机场', ground: '#232a34', groundAlt: '#232a34',
+    build(place) {
+      // 两条平行跑道 + 垂直滑行道
+      world.roads.push({ h: true, p: MAP * .2,  w: 160, col: '#343d4b', dash: true });
+      world.roads.push({ h: true, p: MAP * .8,  w: 160, col: '#343d4b', dash: true });
+      world.roads.push({ h: false, p: MAP * .5, w: 110, col: '#2f3844', dash: false });
+      // 航站楼居中一排
+      for (let i = 0; i < 4; i++) place('building', MAP * (.25 + i * .17), MAP * .5, 0);
+      place('tower', MAP * .08, MAP * .5, 0);
+      place('tower', MAP * .92, MAP * .5, 0);
+      // 客机两排，机头朝向跑道
+      for (let i = 0; i < 8; i++) {
+        place('plane', MAP * (.1 + i * .115), MAP * .33, 0);
+        place('plane', MAP * (.15 + i * .1), MAP * .67, Math.PI);
+      }
+      // 行李车整齐停靠航站楼下
+      for (let i = 0; i < 8; i++) place('luggage', MAP * (.15 + i * .1), MAP * .58, 0);
+      // 航站楼前服务车整齐一排
+      for (let i = 0; i < 7; i++) place('car', MAP * (.22 + i * .08), MAP * .43, 0);
+      // 候机座椅 / 售票机成排
+      for (let i = 0; i < 8; i++) {
+        place('bench',  MAP * (.18 + i * .09), MAP * .62, 0);
+        place('mailbox', MAP * (.21 + i * .09), MAP * .62, 0);
+      }
+      // 跑道边灯
+      for (let i = 0; i < 8; i++) {
+        place('lamp', MAP * (.1 + i * .11), MAP * .2 - 110, 0);
+        place('lamp', MAP * (.1 + i * .11), MAP * .8 + 110, 0);
+      }
+      // 滑行道锥桶一列
+      for (let i = 0; i < 8; i++) place('cone', MAP * .5 - 90, 700 + i * 800, 0);
+      // 员工停车场：整齐网格
+      for (let r = 0; r < 3; r++) for (let q = 0; q < 6; q++)
+        place('car', 700 + q * 150, MAP - 700 - r * 170, Math.PI / 2);
+      // 场边行道树 / 灌木
+      for (let i = 0; i < 9; i++) place('tree', 300 + i * 800, 160, 0);
+      for (let i = 0; i < 9; i++) place('bush', 700 + i * 800, MAP - 160, 0);
+      for (let i = 0; i < 4; i++) place('kiosk', MAP * (.3 + i * .15), MAP * .26, 0);
+    }
+  },
+  subway: {
+    label: '🚇 地铁站', ground: '#1e2530', groundAlt: '#25303b',
+    build(place, cell, blocks) {
+      for (let i = 1; i < blocks; i++) {
+        world.roads.push({ h: true, p: i * cell });
+        world.roads.push({ h: false, p: i * cell });
+      }
+      // 车辆段：一整排地铁列车
+      world.roads.push({ h: true, p: MAP * .86, w: 130, col: '#2e3844', dash: true });
+      for (let i = 0; i < 5; i++) place('train', MAP * (.15 + i * .18), MAP * .86, 0);
+      // 各站口广场：设施成行摆放
+      for (let bx = 0; bx < blocks; bx++) {
+        for (let by = 0; by < blocks; by++) {
+          if ((bx * 2 + by * 3) % 4) continue;
+          const x0 = bx * cell, y0 = by * cell;
+          place('mailbox', x0 + cell * .3,  y0 + cell * .3, 0);
+          place('mailbox', x0 + cell * .42, y0 + cell * .3, 0);
+          place('bench',   x0 + cell * .58, y0 + cell * .3, 0);
+          place('lamp',    x0 + cell * .74, y0 + cell * .3, 0);
+          place('bush',    x0 + cell * .3,  y0 + cell * .6, 0);
+          place('bush',    x0 + cell * .45, y0 + cell * .6, 0);
+          place('bench',   x0 + cell * .6,  y0 + cell * .6, 0);
+        }
+      }
+      // 沿街行道树，等距一列列排开
+      for (let i = 1; i < blocks; i++) {
+        for (let j = 0; j < 6; j++) {
+          place('tree', i * cell - 95, j * cell + 150, 0);
+          place('lamp', i * cell + 95, j * cell + 450, 0);
+        }
+      }
+    }
+  },
+  railway: {
+    label: '🚄 高铁站', ground: '#212832', groundAlt: '#212832',
+    build(place) {
+      // 三条平行轨道
+      world.roads.push({ h: true, p: MAP * .28, w: 120, col: '#333c48', dash: true });
+      world.roads.push({ h: true, p: MAP * .45, w: 120, col: '#333c48', dash: true });
+      world.roads.push({ h: true, p: MAP * .62, w: 120, col: '#333c48', dash: true });
+      // 高铁列车整齐停放（每条轨道一整排）
+      for (let i = 0; i < 5; i++) place('train', MAP * (.14 + i * .18), MAP * .28, 0);
+      for (let i = 0; i < 4; i++) place('train', MAP * (.2 + i * .18), MAP * .45, 0);
+      for (let i = 0; i < 5; i++) place('train', MAP * (.14 + i * .18), MAP * .62, 0);
+      // 站房
+      for (let i = 0; i < 3; i++) place('building', MAP * (.28 + i * .18), MAP * .74, 0);
+      place('tower', MAP * .1, MAP * .74, 0);
+      place('tower', MAP * .9, MAP * .74, 0);
+      // 站前广场设施成行
+      for (let i = 0; i < 6; i++) {
+        place('bench', MAP * (.18 + i * .12), MAP * .8, 0);
+        place('lamp',  MAP * (.24 + i * .12), MAP * .8, 0);
+        place('bush',  MAP * (.18 + i * .12), MAP * .86, 0);
+      }
+      // 售票机 / 服务亭成排
+      for (let i = 0; i < 6; i++) place('mailbox', MAP * (.25 + i * .1), MAP * .7, 0);
+      for (let i = 0; i < 4; i++) place('kiosk', MAP * (.3 + i * .15), MAP * .68, 0);
+      // 站台候车座椅与消防栓成行
+      for (let i = 0; i < 8; i++) {
+        place('bench',  450 + i * 820, MAP * .51, 0);
+        place('hydrant', 450 + i * 820, MAP * .69, 0);
+      }
+      // 停车场：整齐网格
+      for (let r = 0; r < 3; r++) for (let q = 0; q < 6; q++)
+        place('car', 700 + q * 150, 620 + r * 170, Math.PI / 2);
+      // 沿线行道树
+      for (let i = 0; i < 9; i++) place('tree', 300 + i * 800, MAP * .12, 0);
+      for (let i = 0; i < 9; i++) place('tree', 700 + i * 800, MAP * .93, 0);
+      // 轨道间警示锥
+      for (let i = 0; i < 8; i++) place('cone', 500 + i * 800, MAP * .37, 0);
+    }
+  }
+};
+let selectedMap = 'street';
+let playerName = '我';        // 玩家昵称
+let selectedStyle = 0;        // 玩家黑洞外观索引
+let boardCollapsed = false;
+let selectedMode = 'timed';   // timed=限时模式 | endless=无尽模式
+let elapsed = 0;              // 无尽模式已进行时间
+
+function makeHole(x, y, name, isMe, styleIdx) {
+  return {
+    id: idTicker++, x, y, name, isMe,
+    r: 26, score: 0, vx: 0, vy: 0,
+    dead: false, deathT: 0,
+    target: null, retargetT: 0,
+    sink: [],           // 正在掉落动画的物体 {kind, x,y, rot, t, spin}
+    ringPhase: Math.random() * 7,
+    style: HOLE_STYLES[styleIdx || 0],
+    stamina: 3, exhausted: false,  // 体力（仅玩家使用，上限随积分成长）
+    stunT: 0,           // 被警察罚款后的减速时间
+  };
+}
+
+function holeMass(r) { return r * r; }
+function radiusFromMass(m) { return Math.sqrt(m); }
+
+function canSwallow(hole, o) {
+  return hole.r > o.s * 1.02 + 4;
+}
+
+function addScore(hole, o, factor) {
+  factor = factor || 1;
+  const k = KINDS[o.kind];
+  hole.score += k.pts;
+  // AI 发育补偿：成长打折扣（0.5 → 0.8），追人机不至于被甩太远
+  const gained = k.s * k.s * .55 * factor;
+  const m = holeMass(hole.r) + gained;
+  hole.r = radiusFromMass(m); // 无体积上限，随积分持续变大
+  if (hole.isMe) {
+    document.getElementById('myScore').textContent = hole.score;
+    checkMilestones();
+  }
+}
+
+// 积分里程碑：达标瞬间弹 2 秒横幅
+let milestone50 = false, milestone15k = false;
+function checkMilestones() {
+  if (!me || me.dead) return;
+  if (!milestone50 && me.score >= 5000) {
+    milestone50 = true;
+    showMilestone('🎉 达到 5000 分！「加油」');
+  }
+  if (!milestone15k && me.score >= 15000) {
+    milestone15k = true;
+    showMilestone('🏆 达到 15000 分！「你已经会玩这个游戏了，没事可以玩一玩娱乐一下」');
+  }
+}
+function showMilestone(text) {
+  const el = document.getElementById('milestone');
+  el.textContent = text;
+  el.style.opacity = 1;
+  clearTimeout(el._h);
+  el._h = setTimeout(() => el.style.opacity = 0, 2000); // 显示 2 秒后淡出
+}
+
+function spawnWorld(mapId) {
+  world.objs = []; world.holes = []; world.particles = []; world.roads = [];
+  const cfg = MAPS[mapId || 'street'];
+  world.ground = cfg.ground; world.groundAlt = cfg.groundAlt;
+  const blocks = 8, cell = MAP / blocks;
+  function place(kind, x, y, rot) {
+    const k = KINDS[kind];
+    // 轻微随机偏移：保留结构布局，但更接近现实中的自然排布
+    const px = clamp(x + rand(-45, 45), 60, MAP - 60);
+    const py = clamp(y + rand(-45, 45), 60, MAP - 60);
+    rot = (rot || 0) + rand(-.08, .08);
+    world.objs.push({
+      id: idTicker++, kind, x: px, y: py, homeX: px, homeY: py, homeRot: rot,
+      s: k.s * rand(.95, 1.05), rot, alive: true, sinking: null, respawnT: 0,
+      shirtCol: kind === 'person' ? SHIRT_COLS[(Math.random() * SHIRT_COLS.length) | 0] : null,
+      dir: rand(0, Math.PI * 2), retargetT: rand(1, 4), walkT: rand(0, 7),   // 小人巡逻用
+      cool: 0, chaseId: null, chaseT: 0                                       // 警察追捕用
+    });
+  }
+  cfg.build(place, cell, blocks);
+  // 小人：大部分沿道路走动，少部分在场地里闲逛
+  for (let i = 0; i < 110; i++) {
+    let x, y;
+    if (world.roads.length && Math.random() < .72) {
+      const r = world.roads[(Math.random() * world.roads.length) | 0];
+      const along = rand(120, MAP - 120);
+      const off = rand(-1, 1) * ((r.w || 56) * .42);
+      x = r.h ? along : r.p + off;
+      y = r.h ? r.p + off : along;
+    } else {
+      x = rand(120, MAP - 120); y = rand(120, MAP - 120);
+    }
+    place('person', x, y, 0);
+  }
+  // 警察小人：沿道路与广场巡逻
+  for (let i = 0; i < 26; i++) {
+    let x, y;
+    if (world.roads.length && Math.random() < .8) {
+      const r = world.roads[(Math.random() * world.roads.length) | 0];
+      const along = rand(150, MAP - 150);
+      const off = rand(-1, 1) * ((r.w || 56) * .4);
+      x = r.h ? along : r.p + off;
+      y = r.h ? r.p + off : along;
+    } else {
+      x = rand(150, MAP - 150); y = rand(150, MAP - 150);
+    }
+    place('police', x, y, 0);
+  }
+}
+
+function startGame() {
+  spawnWorld(selectedMap);
+  me = makeHole(MAP/2, MAP/2, playerName, true, selectedStyle);
+  world.holes.push(me);
+  // AI 数量更多，随机分布在大地图各处；每人一种随机外观（避开玩家所选）
+  const names = [...BOT_NAMES].sort(() => Math.random() - .5).slice(0, BOT_COUNT);
+  const stylePool = HOLE_STYLES.map((s, i) => i).filter(i => i !== selectedStyle).sort(() => Math.random() - .5);
+  names.forEach((n, i) => {
+    let x, y;
+    do { x = rand(400, MAP-400); y = rand(400, MAP-400); } while (dist(x, y, MAP/2, MAP/2) < 900);
+    world.holes.push(makeHole(x, y, n, false, stylePool[i % stylePool.length]));
+  });
+  timeLeft = GAME_TIME;
+  elapsed = 0;
+  milestone50 = false; milestone15k = false; // 重置积分里程碑
+  const ms = document.getElementById('milestone');
+  ms.textContent = ''; ms.style.opacity = 0; clearTimeout(ms._h);
+  cam.x = me.x; cam.y = me.y; cam.zoom = 1;
+  state = 'play';
+  document.getElementById('startPanel').classList.add('hidden');
+  document.getElementById('endPanel').classList.add('hidden');
+  document.getElementById('deathPanel').classList.add('hidden');
+  document.getElementById('clearPanel').classList.add('hidden');
+  document.getElementById('endRunBtn').classList.toggle('hidden', selectedMode !== 'endless');
+  document.getElementById('pauseBtn').classList.remove('hidden');
+  document.getElementById('pausePanel').classList.add('hidden');
+  document.getElementById('board').classList.remove('hidden');
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+  document.getElementById('myScore').textContent = '0';
+}
+
+// ================= 吞噬逻辑 =================
+function tryEat(hole) {
+  for (const o of world.objs) {
+    if (!o.alive || o.sinking) continue;
+    const d = dist(hole.x, hole.y, o.x, o.y);
+    if (canSwallow(hole, o) && d < hole.r + o.s * .4) {
+      o.sinking = { hole, t: 0, ang: Math.atan2(o.y - hole.y, o.x - hole.x), startD: d };
+      hole.swallowFlash = 1; // 洞口高亮提示
+      break; // 每帧每洞吞一个，节奏更好
+    }
+  }
+  // 洞吃洞
+  for (const other of world.holes) {
+    if (other === hole || other.dead || hole.dead) continue;
+    if (hole.r > other.r * 1.25) {
+      const d = dist(hole.x, hole.y, other.x, other.y);
+      const overlap = d < hole.r * .55 + other.r * .1;
+      if (overlap) devourHole(hole, other);
+    }
+  }
+}
+
+function devourHole(bigger, smaller) {
+  smaller.dead = true; smaller.deathT = 0;
+  bigger.score += Math.round(smaller.score * .5 + smaller.r);
+  const m = holeMass(bigger.r) + holeMass(smaller.r) * (bigger.isMe ? .4 : .35);
+  bigger.r = radiusFromMass(m); // 无体积上限
+  if (bigger.isMe) document.getElementById('myScore').textContent = bigger.score;
+  if (smaller.isMe) {
+    document.getElementById('deathSub').textContent =
+      '被「' + bigger.name + '」一口吞掉了！当前得分 ' + smaller.score + ' 分。';
+    const dt2 = document.getElementById('deathTaunt');
+    dt2.textContent = tauntByScore(smaller.score);
+    dt2.style.display = dt2.textContent ? '' : 'none';
+    document.getElementById('deathPanel').classList.remove('hidden');
+    showToast('你被 ' + bigger.name + ' 吞掉了！');
+  } else if (bigger.isMe) {
+    showToast('吞噬了 ' + smaller.name + '！+' + Math.round(smaller.score*.5 + smaller.r));
+    // 无尽模式：吞掉所有对手后弹出选择（继续玩 / 离开对局）
+    if (selectedMode === 'endless' && world.holes.every(h => h.isMe || h.dead)) showClearPanel();
+  }
+}
+
+// 按积分给死亡评语（5000/15000 的「加油」「会玩」改为达标时弹 2 秒横幅，死亡面板只保留低分评语）
+function tauntByScore(score) {
+  if (score < 5000) return '「你还得练」';
+  return '';
+}
+
+function showClearPanel() {
+  state = 'paused'; // 弹出选择时冻结对局
+  document.getElementById('clearSub').textContent =
+    '所有对手都被你吞掉了！当前得分 ' + me.score + ' 分。';
+  document.getElementById('clearPanel').classList.remove('hidden');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 2200);
+}
+
+// ================= AI =================
+function botAI(hole, dt) {
+  hole.retargetT -= dt;
+  let tx, ty;
+  // 猎杀比自己小的洞（攻击性：体型达标（可吞）即追，索敌半径 900）
+  let prey = null, best = 1e9;
+  for (const o of world.holes) {
+    if (o === hole || o.dead) continue;
+    if (hole.r > o.r * 1.25) {
+      const d = dist(hole.x, hole.y, o.x, o.y);
+      if (d < 900 && d < best) { best = d; prey = o; }
+    }
+  }
+  // 逃离更大的洞
+  let threat = null;
+  for (const o of world.holes) {
+    if (o === hole || o.dead) continue;
+    if (o.r > hole.r * 1.3 && dist(hole.x, hole.y, o.x, o.y) < o.r * 2.2) threat = o;
+  }
+  if (threat) { tx = hole.x * 2 - threat.x; ty = hole.y * 2 - threat.y; }
+  else if (prey) { tx = prey.x; ty = prey.y; }
+  else {
+    if (hole.retargetT <= 0 || !hole.target || !hole.target.alive || hole.target.sinking) {
+      // 找最近可吃的物体
+      let bo = null, bd = 1e9;
+      for (let i = 0; i < world.objs.length; i++) {
+        const o = world.objs[i];
+        if (!o.alive || o.sinking || !canSwallow(hole, o)) continue;
+        const d = dist(hole.x, hole.y, o.x, o.y) - o.s * 2;
+        if (d < bd) { bd = d; bo = o; }
+      }
+      hole.target = bo || { x: rand(200, MAP-200), y: rand(200, MAP-200) };
+      hole.retargetT = rand(1.5, 3);
+    }
+    tx = hole.target.x; ty = hole.target.y;
+  }
+  const ang = Math.atan2(ty - hole.y, tx - hole.x);
+  const sp = holeSpeed(hole);
+  hole.tvx = Math.cos(ang) * sp; hole.tvy = Math.sin(ang) * sp;
+}
+
+function holeSpeed(hole) { return clamp(320 - hole.r * .6, 80, 320); }
+const BOOST_MUL = 1.55;        // 基础加速倍率（随体型再加成）
+// 体力上限随积分成长：基础 3 秒，积分越高上限越大（公式 3 + √积分 × 0.15）
+function staminaMax(hole) { return 3 + Math.sqrt(Math.max(0, hole.score)) * .15; }
+// 回复速率保持「从 0 回满需 5 秒」
+function staminaRegen(hole) { return staminaMax(hole) / 5; }
+
+// ================= 主循环 =================
+function update(dt) {
+  if (state !== 'play') return;
+  if (selectedMode === 'timed') {
+    timeLeft -= dt;
+    if (timeLeft <= 0) { timeLeft = 0; endGame(); return; }
+  } else {
+    elapsed += dt;
+  }
+
+  // 玩家输入
+  if (!me.dead) {
+    let dirx = 0, diry = 0, moving = false, maxSp = holeSpeed(me);
+    if (input.useMouse) {
+      // 朝鼠标世界坐标移动
+      const wx = cam.x + (input.mx - W/2) / cam.zoom;
+      const wy = cam.y + (input.my - H/2) / cam.zoom;
+      const d = dist(me.x, me.y, wx, wy);
+      if (d > 8) {
+        moving = true;
+        const sp = Math.min(maxSp, d * 6);
+        dirx = (wx - me.x) / d * (sp / maxSp); diry = (wy - me.y) / d * (sp / maxSp);
+      }
+    } else {
+      const k = input.keys;
+      if (k['w'] || k['arrowup']) diry -= 1;
+      if (k['s'] || k['arrowdown']) diry += 1;
+      if (k['a'] || k['arrowleft']) dirx -= 1;
+      if (k['d'] || k['arrowright']) dirx += 1;
+      if (dirx || diry) { const l = Math.hypot(dirx, diry); dirx /= l; diry /= l; moving = true; }
+    }
+    // 长按加速：消耗体力，耗尽后需回复到一半才能再次加速
+    // 体型越大，加速倍率越高（小洞 1.55 倍，最大洞最高 2.45 倍），弥补大洞基础速度慢
+    if (moving && (input.keys[' '] || input.boostBtn) && !me.exhausted && me.stamina > 0) {
+      maxSp *= BOOST_MUL + Math.min(me.r / 340, 1) * .9;
+      me.stamina -= dt;
+      if (me.stamina <= 0) { me.stamina = 0; me.exhausted = true; }
+    } else {
+      const sm = staminaMax(me);
+      me.stamina = Math.min(sm, me.stamina + staminaRegen(me) * dt);
+      if (me.exhausted && me.stamina >= sm * .5) me.exhausted = false;
+    }
+    const dx = dirx * maxSp, dy = diry * maxSp;
+    me.vx += (dx - me.vx) * Math.min(1, dt * 2.6);
+    me.vy += (dy - me.vy) * Math.min(1, dt * 2.6);
+  }
+
+  for (const h of world.holes) {
+    if (h.dead) { h.deathT += dt; continue; }
+    if (!h.isMe) botAI(h, dt);
+    // 惯性：AI 速度平滑趋近目标速度
+    if (!h.isMe) {
+      h.vx += (h.tvx - h.vx) * Math.min(1, dt * 3.5);
+      h.vy += (h.tvy - h.vy) * Math.min(1, dt * 3.5);
+    }
+    if (h.swallowFlash > 0) h.swallowFlash -= dt * 1.4;
+    if (h.stunT > 0) h.stunT -= dt;
+    const stunMul = h.stunT > 0 ? .45 : 1; // 被罚款后短暂减速
+    h.x = clamp(h.x + h.vx * dt * stunMul, h.r*.4, MAP - h.r*.4);
+    h.y = clamp(h.y + h.vy * dt * stunMul, h.r*.4, MAP - h.r*.4);
+    h.ringPhase += dt * 2.4;
+    tryEat(h);
+
+    // 掉落动画推进
+    for (let i = h.sink.length - 1; i >= 0; i--) {
+      const s = h.sink[i];
+      s.t += dt * .8;
+      if (s.t >= 1) h.sink.splice(i, 1);
+    }
+  }
+
+  // 小人走动：平时闲逛，附近出现黑洞就逃跑
+  for (const o of world.objs) {
+    if (o.kind !== 'person' || !o.alive || o.sinking) continue;
+    o.walkT += dt * 9;
+    o.retargetT -= dt;
+    let fleeX = 0, fleeY = 0, fleeing = false;
+    for (const h of world.holes) {
+      if (h.dead) continue;
+      const d = dist(o.x, o.y, h.x, h.y);
+      if (d < h.r + 170) {
+        fleeing = true;
+        const inv = 1 / (d || 1);
+        fleeX += (o.x - h.x) * inv; fleeY += (o.y - h.y) * inv;
+      }
+    }
+    let sp;
+    if (fleeing) {
+      const l = Math.hypot(fleeX, fleeY) || 1;
+      o.dir = Math.atan2(fleeY / l, fleeX / l);
+      sp = 135; // 惊慌奔逃
+    } else {
+      if (o.retargetT <= 0) { o.retargetT = rand(2, 5); if (Math.random() < .35) o.dir = rand(0, Math.PI * 2); }
+      sp = 34; // 悠闲散步
+    }
+    o.x += Math.cos(o.dir) * sp * dt;
+    o.y += Math.sin(o.dir) * sp * dt;
+    if (o.x < 40 || o.x > MAP - 40 || o.y < 40 || o.y > MAP - 40) {
+      o.x = clamp(o.x, 40, MAP - 40); o.y = clamp(o.y, 40, MAP - 40);
+      o.dir = Math.atan2(MAP / 2 - o.y, MAP / 2 - o.x); // 到边界就往回走
+    }
+    o.rot = o.dir + Math.PI / 2; // 朝向移动方向
+  }
+
+  // 警察小人：发现黑洞就追上去罚款；吞掉警察会引来周边警察追捕
+  for (const o of world.objs) {
+    if (o.kind !== 'police' || !o.alive || o.sinking) continue;
+    o.walkT += dt * 11;
+    o.cool = Math.max(0, o.cool - dt);
+    if (o.chaseT > 0) { o.chaseT -= dt; if (o.chaseT <= 0) o.chaseId = null; }
+    // 追捕目标：优先复仇目标（吞过警察的洞），否则最近的洞
+    let target = null;
+    if (o.chaseId != null) {
+      const revenge = world.holes.find(h => h.id === o.chaseId && !h.dead);
+      if (revenge && dist(o.x, o.y, revenge.x, revenge.y) < 1500) target = revenge;
+      else { o.chaseId = null; o.chaseT = 0; }
+    }
+    if (!target) {
+      let bd = 470;
+      for (const h of world.holes) {
+        if (h.dead) continue;
+        const d = dist(o.x, o.y, h.x, h.y);
+        if (d < bd) { bd = d; target = h; }
+      }
+    }
+    let sp;
+    if (target) {
+      const d = dist(o.x, o.y, target.x, target.y) || 1;
+      o.dir = Math.atan2(target.y - o.y, target.x - o.x);
+      sp = 185;
+      // 追到洞口边缘（保持不被吞的距离）就开罚单：-30 分 + 1 秒减速
+      if (d < target.r + 20 && o.cool <= 0) {
+        o.cool = 3;
+        target.score = Math.max(0, target.score - 30);
+        target.stunT = 1;
+        if (target.isMe) {
+          document.getElementById('myScore').textContent = target.score;
+          showToast('🚨 被警察抓住！罚款 -30 分，减速 1 秒');
+        }
+        for (let i = 0; i < 4; i++) world.particles.push({ x: o.x, y: o.y, vx: rand(-70,70), vy: rand(-70,70), t: 0, col: '#ffd54a' });
+      }
+    } else {
+      // 没有目标：巡逻闲逛
+      o.retargetT -= dt;
+      if (o.retargetT <= 0) { o.retargetT = rand(2, 5); if (Math.random() < .4) o.dir = rand(0, Math.PI * 2); }
+      sp = 40;
+    }
+    o.x += Math.cos(o.dir) * sp * dt;
+    o.y += Math.sin(o.dir) * sp * dt;
+    if (o.x < 40 || o.x > MAP - 40 || o.y < 40 || o.y > MAP - 40) {
+      o.x = clamp(o.x, 40, MAP - 40); o.y = clamp(o.y, 40, MAP - 40);
+      o.dir = Math.atan2(MAP / 2 - o.y, MAP / 2 - o.x);
+    }
+    o.rot = o.dir + Math.PI / 2;
+  }
+
+  // 物体下沉动画（缓慢螺旋吸入，一点点漏进洞里）
+  for (const o of world.objs) {
+    if (o.sinking) {
+      o.sinking.t += dt * .85;
+      const hx = o.sinking.hole.x, hy = o.sinking.hole.y;
+      o.sinking.ang += dt * 4.5;
+      const t = o.sinking.t;
+      // 前半段缓慢滑向洞口，后半段加速坠入
+      const ease = t < .5 ? t * .8 : .4 + (t - .5) * 1.2;
+      const startD = o.sinking.startD;
+      const curD = startD * (1 - ease);
+      o.x = hx + Math.cos(o.sinking.ang) * curD;
+      o.y = hy + Math.sin(o.sinking.ang) * curD;
+      o.rot += dt * 6;
+      if (t >= 1) {
+        const owner = o.sinking.hole;
+        o.alive = false; o.sinking = null;
+        o.respawnT = 20; // 20 秒后在原位重生
+        owner.sink.push({ kind: o.kind, t: 0, rot: rand(0,7) });
+        addScore(owner, o, owner.isMe ? 1 : .8);
+        // 吞掉警察：周边警察群起追捕（复仇目标锁定吞人者 8 秒）
+        if (o.kind === 'police') {
+          for (const p of world.objs) {
+            if (p.kind !== 'police' || !p.alive || p.sinking) continue;
+            if (dist(p.x, p.y, owner.x, owner.y) < 1400) { p.chaseId = owner.id; p.chaseT = 8; }
+          }
+          if (owner.isMe) showToast('🚨 你吞掉了一名警察！周边警察正在追捕你！');
+        }
+        // 粒子
+        for (let i = 0; i < 6; i++) world.particles.push({ x: hx + rand(-10,10), y: hy + rand(-10,10), vx: rand(-60,60), vy: rand(-60,60), t: 0, col: KINDS[o.kind].color });
+      }
+    }
+  }
+
+  // 到期物体在原位置重生
+  for (const o of world.objs) {
+    if (!o.alive && !o.sinking) {
+      o.respawnT -= dt;
+      if (o.respawnT <= 0) {
+        o.alive = true;
+        o.x = o.homeX; o.y = o.homeY; o.rot = o.homeRot;
+      }
+    }
+  }
+
+  for (let i = world.particles.length - 1; i >= 0; i--) {
+    const p = world.particles[i]; p.t += dt;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .9; p.vy *= .9;
+    if (p.t > .6) world.particles.splice(i, 1);
+  }
+
+  // 相机（黑洞越大镜头拉得越远；视野下限随积分指数式平缓缩小，各区间增速均匀）
+  const minZoom = Math.max(.05, .22 * Math.exp(-Math.max(me.score, 0) / 8000));
+  const tz = clamp(1.15 - me.r / 400, minZoom, 1.15);
+  cam.zoom += (tz - cam.zoom) * Math.min(1, dt * 2);
+  const focus = me.dead ? ([...world.holes].sort((a,b) => b.score - a.score).find(h => !h.dead) || me) : me;
+  cam.x += (focus.x - cam.x) * Math.min(1, dt * 5);
+  cam.y += (focus.y - cam.y) * Math.min(1, dt * 5);
+
+  updateHUD();
+}
+
+let hudT = 0;
+function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ':' + String(s).padStart(2, '0'); }
+function updateHUD() {
+  const el = document.getElementById('timer');
+  if (selectedMode === 'timed') {
+    el.textContent = fmtTime(timeLeft);
+    el.classList.toggle('danger', timeLeft <= 15);
+  } else {
+    el.textContent = '∞ ' + fmtTime(elapsed);
+    el.classList.remove('danger');
+  }
+  // 体力条（每帧更新，保证平滑；上限随积分成长）
+  const fill = document.getElementById('stFill');
+  if (fill && me) {
+    const sm = staminaMax(me);
+    fill.style.width = (me.stamina / sm * 100) + '%';
+    fill.classList.toggle('low', me.exhausted || me.stamina < sm * .25);
+    document.getElementById('stLabel').textContent = '体力 ' + me.stamina.toFixed(1) + '/' + sm.toFixed(1) + ' 秒 · 长按空格加速';
+  }
+
+  hudT++; if (hudT % 10 !== 0) return;
+  const sorted = [...world.holes].sort((a, b) => b.score - a.score);
+  document.getElementById('boardRows').innerHTML = sorted.map((h, i) =>
+    `<div class="row${h.isMe ? ' me' : ''}"><span class="rank">${i+1}</span><span class="dot" style="background:${h.style.ring}"></span><span class="rname">${h.dead ? '💀 ' : ''}${h.name}</span><span class="rscore">${h.score}</span></div>`
+  ).join('');
+  document.getElementById('boardHead').textContent = '🏆 排行榜 ' + (boardCollapsed ? '▸' : '▾');
+}
+
+// ================= 渲染 =================
+function render() {
+  ctx.fillStyle = '#151a24';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W/2, H/2); ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
+
+  const viewW = W / cam.zoom, viewH = H / cam.zoom;
+  const vx0 = cam.x - viewW/2, vy0 = cam.y - viewH/2, vx1 = cam.x + viewW/2, vy1 = cam.y + viewH/2;
+
+  // 地面（配色随所选地图）
+  ctx.fillStyle = world.ground || '#1c2430';
+  ctx.fillRect(0, 0, MAP, MAP);
+  if (world.groundAlt && world.groundAlt !== world.ground) {
+    ctx.fillStyle = world.groundAlt;
+    const cell = MAP / 8;
+    for (let bx = 0; bx < 8; bx++) for (let by = 0; by < 8; by++) {
+      if ((bx + by) % 2 === 0) ctx.fillRect(bx*cell + 24, by*cell + 24, cell - 48, cell - 48);
+    }
+  }
+  // 道路（宽度/颜色可按地图定制）
+  for (const r of world.roads) {
+    ctx.strokeStyle = r.col || '#2a3442';
+    ctx.lineWidth = r.w || 56;
+    ctx.beginPath();
+    if (r.h) { ctx.moveTo(0, r.p); ctx.lineTo(MAP, r.p); } else { ctx.moveTo(r.p, 0); ctx.lineTo(r.p, MAP); }
+    ctx.stroke();
+  }
+  // 道路中线虚线（普通街道淡色，跑道/轨道亮色）
+  ctx.setLineDash([26, 22]);
+  for (const r of world.roads) {
+    if (r.dash === false) continue;
+    if (r.dash) { ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 6; }
+    else { ctx.strokeStyle = 'rgba(255,255,255,.13)'; ctx.lineWidth = 4; }
+    ctx.beginPath();
+    if (r.h) { ctx.moveTo(0, r.p); ctx.lineTo(MAP, r.p); } else { ctx.moveTo(r.p, 0); ctx.lineTo(r.p, MAP); }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // 地图边界
+  ctx.strokeStyle = 'rgba(124,92,255,.5)'; ctx.lineWidth = 8;
+  ctx.strokeRect(0, 0, MAP, MAP);
+
+  // 物体阴影+本体（已滑入洞口的物体跳过，改在洞内层绘制）
+  for (const o of world.objs) {
+    if (!o.alive && !o.sinking) continue;
+    if (o.x < vx0 - 200 || o.x > vx1 + 200 || o.y < vy0 - 200 || o.y > vy1 + 200) continue;
+    let scale = 1, alpha = 1;
+    if (o.sinking) {
+      const t = o.sinking.t;
+      // 中心一旦进入洞口范围，就交给洞内层绘制（漏下去）
+      if (dist(o.x, o.y, o.sinking.hole.x, o.sinking.hole.y) < o.sinking.hole.r * .96) continue;
+      scale = 1 - t * .25; alpha = 1 - t * .35;
+    }
+    ctx.save();
+    ctx.translate(o.x, o.y); ctx.rotate(o.rot); ctx.scale(scale, scale);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath(); ctx.ellipse(3, 5, o.s * .9, o.s * .6, 0, 0, 7); ctx.fill();
+    KINDS[o.kind].draw(ctx, o.s, o.shirtCol || KINDS[o.kind].color, o.walkT || 0);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // 吞噬光圈：绿色=当前可以吃，白色=还不够大
+    if (me && !me.dead && !o.sinking) {
+      const ok = me.r > o.s * 1.02 + 4;
+      ctx.strokeStyle = ok ? 'rgba(90,230,130,.6)' : 'rgba(255,255,255,.42)';
+      ctx.lineWidth = 3 / cam.zoom;
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.s * 1.45, 0, 7); ctx.stroke();
+    }
+  }
+
+  // 粒子
+  for (const p of world.particles) {
+    ctx.globalAlpha = 1 - p.t / .6;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // 黑洞（先画洞体再画掉落物）
+  for (const h of world.holes) {
+    if (h.dead && h.deathT > .6) continue;
+    const inView = h.x + h.r + 260 > vx0 && h.x - h.r - 260 < vx1 && h.y + h.r + 260 > vy0 && h.y - h.r - 260 < vy1;
+    if (!inView) continue;
+    drawHole(h);
+  }
+
+  ctx.restore();
+  renderMiniMap();
+}
+
+// 绘制洞体与内部花纹（坐标系原点为洞中心）
+function paintHoleBody(c, style, r, ph) {
+  const body = c.createRadialGradient(0, 0, r * .1, 0, 0, r);
+  body.addColorStop(0, '#000');
+  body.addColorStop(.75, '#05030f');
+  body.addColorStop(1, style.rim);
+  c.fillStyle = body;
+  c.beginPath(); c.arc(0, 0, r, 0, 7); c.fill();
+
+  c.save();
+  c.beginPath(); c.arc(0, 0, r * .8, 0, 7); c.clip();
+  c.globalAlpha = .5;
+  c.strokeStyle = style.glow;
+  c.lineCap = 'round';
+  if (style.pattern === 'spiral') {
+    // 经典漩涡：两条旋转弧线
+    c.lineWidth = r * .05;
+    for (let i = 0; i < 2; i++) {
+      const a = ph * 1.7 + i * Math.PI;
+      c.beginPath(); c.arc(0, 0, r * .55, a, a + Math.PI * .9); c.stroke();
+    }
+  } else if (style.pattern === 'rays') {
+    // 放射光芒：六根旋转辐条
+    c.lineWidth = r * .07;
+    for (let i = 0; i < 6; i++) {
+      const a = ph * 1.2 + i * Math.PI / 3;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * r * .18, Math.sin(a) * r * .18);
+      c.lineTo(Math.cos(a) * r * .7, Math.sin(a) * r * .7);
+      c.stroke();
+    }
+  } else if (style.pattern === 'rings') {
+    // 同心环：呼吸式脉动
+    c.lineWidth = r * .05;
+    for (let i = 0; i < 3; i++) {
+      const rr = r * (.25 + i * .18) + Math.sin(ph * 2 + i * 1.3) * r * .07;
+      c.beginPath(); c.arc(0, 0, rr, 0, 7); c.stroke();
+    }
+  } else if (style.pattern === 'star') {
+    // 星芒：四道交叉旋转光线
+    c.lineWidth = r * .06;
+    for (let i = 0; i < 4; i++) {
+      const a = ph * 1.4 + i * Math.PI / 4;
+      c.beginPath();
+      c.moveTo(-Math.cos(a) * r * .65, -Math.sin(a) * r * .65);
+      c.lineTo(Math.cos(a) * r * .65, Math.sin(a) * r * .65);
+      c.stroke();
+    }
+  } else if (style.pattern === 'waves') {
+    // 波纹：三条流动正弦波
+    c.lineWidth = r * .05;
+    for (let i = 0; i < 3; i++) {
+      const off = i * r * .3 - r * .3;
+      c.beginPath();
+      for (let x = -r * .7; x <= r * .72; x += r * .12) {
+        const y = off + Math.sin(x / r * 4 + ph * 2 + i) * r * .09;
+        x <= -r * .7 ? c.moveTo(x, y) : c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+  }
+  c.restore();
+  c.globalAlpha = 1;
+}
+
+function drawHole(h) {
+  const r = h.r;
+  // 吸入光环
+  const grd = ctx.createRadialGradient(h.x, h.y, r * .2, h.x, h.y, r * 1.9);
+  grd.addColorStop(0, 'rgba(0,0,0,.45)');
+  grd.addColorStop(.55, 'rgba(90,60,200,.14)');
+  grd.addColorStop(1, 'rgba(90,60,200,0)');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(h.x, h.y, r * 1.9, 0, 7); ctx.fill();
+
+  // 旋转吸积盘
+  ctx.save(); ctx.translate(h.x, h.y);
+  for (let i = 0; i < 3; i++) {
+    const rr = r * (1.06 + i * .16);
+    const a0 = h.ringPhase * (1 + i * .35) + i * 2.1;
+    ctx.globalAlpha = .34 - i * .09;
+    ctx.strokeStyle = h.style.ring;
+    ctx.lineWidth = r * .075;
+    ctx.beginPath(); ctx.arc(0, 0, rr, a0, a0 + Math.PI * 1.25); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // 洞体 + 内部花纹（可复用于主菜单预览）
+  paintHoleBody(ctx, h.style, r, h.ringPhase);
+
+  // 正在坠入的物体：裁剪在洞口范围内，一点点漏下去
+  for (const o of world.objs) {
+    if (!o.sinking || o.sinking.hole !== h) continue;
+    if (dist(o.x, o.y, h.x, h.y) >= h.r * .96) continue;
+    const t = o.sinking.t;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r * .96, 0, 7); ctx.clip();
+    ctx.translate(o.x - h.x, o.y - h.y);
+    ctx.rotate(o.rot);
+    const sc = 1 - t * .45;
+    ctx.scale(sc, sc);
+    ctx.globalAlpha = 1 - t * .5;
+    KINDS[o.kind].draw(ctx, o.s, o.shirtCol || KINDS[o.kind].color, o.walkT || 0);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // 掉落中的物体（在洞内深处，缩小旋转淡出）
+  for (const s of h.sink) {
+    const t = s.t;
+    ctx.save();
+    ctx.rotate(s.rot + t * 6);
+    ctx.scale(1 - t, 1 - t);
+    ctx.globalAlpha = 1 - t * .8;
+    ctx.translate((1 - t) * r * .2, (1 - t) * r * .2);
+    KINDS[s.kind].draw(ctx, r * .28, KINDS[s.kind].color);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  // 吞噬瞬间洞口高亮
+  if (h.swallowFlash > 0) {
+    ctx.globalAlpha = h.swallowFlash * .9;
+    ctx.strokeStyle = '#cdbcff';
+    ctx.lineWidth = r * .1;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.02, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // 名字
+  ctx.font = `700 ${Math.max(13, r * .22)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = h.isMe ? '#ffd54a' : 'rgba(255,255,255,.85)';
+  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 3;
+  const label = h.isMe ? h.name : h.name;
+  ctx.strokeText(label, 0, -r - 10);
+  ctx.fillText(label, 0, -r - 10);
+  ctx.restore();
+}
+
+function renderMiniMap() {
+  const k = 140 / MAP;
+  mmCtx.clearRect(0, 0, 140, 140);
+  mmCtx.fillStyle = 'rgba(28,36,48,.9)'; mmCtx.fillRect(0, 0, 140, 140);
+  mmCtx.fillStyle = 'rgba(255,255,255,.08)';
+  for (const r of world.roads) {
+    if (r.h) mmCtx.fillRect(0, r.p * k, 140, 1.5); else mmCtx.fillRect(r.p * k, 0, 1.5, 140);
+  }
+  for (const h of world.holes) {
+    if (h.dead && h.deathT > .6) continue;
+    mmCtx.fillStyle = h.isMe ? '#ffd54a' : '#7c9aff';
+    mmCtx.beginPath(); mmCtx.arc(h.x * k, h.y * k, Math.max(2, h.r * k * .8), 0, 7); mmCtx.fill();
+  }
+  // 视野框
+  mmCtx.strokeStyle = 'rgba(255,255,255,.4)';
+  mmCtx.strokeRect((cam.x - W/cam.zoom/2) * k, (cam.y - H/cam.zoom/2) * k, W/cam.zoom * k, H/cam.zoom * k);
+}
+
+// ================= 暂停 / 退出 =================
+function pauseGame() {
+  if (state !== 'play') return;
+  state = 'paused';
+  document.getElementById('pausePanel').classList.remove('hidden');
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  state = 'play';
+  document.getElementById('pausePanel').classList.add('hidden');
+}
+function quitToMenu() {
+  state = 'menu';
+  me = null;
+  ['pausePanel', 'deathPanel', 'endPanel', 'clearPanel', 'board'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap', 'endRunBtn', 'pauseBtn'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById('startPanel').classList.remove('hidden');
+  spawnWorld(selectedMap); // 回到主菜单并预览当前所选地图
+  document.getElementById('timer').textContent = '3:00';
+  document.getElementById('timer').classList.remove('danger');
+}
+
+// ================= 结束 =================
+function endGame() {
+  state = 'over';
+  document.getElementById('deathPanel').classList.add('hidden');
+  document.getElementById('clearPanel').classList.add('hidden');
+  document.getElementById('pausePanel').classList.add('hidden');
+  document.getElementById('endRunBtn').classList.add('hidden');
+  document.getElementById('pauseBtn').classList.add('hidden');
+  document.getElementById('board').classList.add('hidden');
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  const sorted = [...world.holes].sort((a, b) => b.score - a.score);
+  const myRank = sorted.findIndex(h => h.isMe) + 1;
+  document.getElementById('endTitle').textContent =
+    myRank === 1 ? '🏆 你赢了！' : myRank <= 3 ? '🎉 第 ' + myRank + ' 名！' : '你排在第 ' + myRank + ' 名';
+  document.getElementById('endSub').textContent = '最终排名';
+  document.getElementById('resultList').innerHTML = sorted.map((h, i) =>
+    `<div class="row${h.isMe ? ' me' : ''}"><span class="rank">${i+1}</span><span class="dot" style="background:${h.style.ring}"></span><span class="rname">${h.name}</span><span class="rscore">${h.score}</span></div>`
+  ).join('');
+  document.getElementById('endPanel').classList.remove('hidden');
+}
+
+// ================= 输入 =================
+canvas.addEventListener('mousemove', e => { input.mx = e.clientX; input.my = e.clientY; input.useMouse = true; });
+canvas.addEventListener('touchstart', e => { const t = e.touches[0]; input.mx = t.clientX; input.my = t.clientY; input.useMouse = true; e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchmove', e => { const t = e.touches[0]; input.mx = t.clientX; input.my = t.clientY; e.preventDefault(); }, { passive: false });
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  input.keys[k] = true;
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  if (k === 'p') { // P 键：暂停 / 恢复（制霸选择面板弹出时不响应）
+    const clearOpen = !document.getElementById('clearPanel').classList.contains('hidden');
+    if (clearOpen) { /* 等待玩家选择，忽略 */ }
+    else if (state === 'play') pauseGame();
+    else if (state === 'paused') resumeGame();
+  }
+  input.useMouse = false;
+});
+window.addEventListener('keyup', e => { input.keys[e.key.toLowerCase()] = false; });
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+document.getElementById('deathRestartBtn').addEventListener('click', startGame);
+document.getElementById('spectateBtn').addEventListener('click', () => {
+  document.getElementById('deathPanel').classList.add('hidden');
+});
+// 无尽模式吃光对手后的选择
+document.getElementById('clearContinueBtn').addEventListener('click', () => {
+  document.getElementById('clearPanel').classList.add('hidden');
+  state = 'play';
+});
+document.getElementById('clearLeaveBtn').addEventListener('click', endGame);
+document.querySelectorAll('#mapPick .mapBtn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#mapPick .mapBtn').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+  selectedMap = b.dataset.map;
+  spawnWorld(selectedMap); // 菜单背景同步预览所选地图
+}));
+document.querySelectorAll('#modePick .mapBtn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#modePick .mapBtn').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+  selectedMode = b.dataset.mode;
+}));
+document.getElementById('endRunBtn').addEventListener('click', endGame);
+// 昵称修改（带本地记忆）
+const nameInput = document.getElementById('nameInput');
+try {
+  const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('playerName') : null;
+  if (saved) { playerName = saved; nameInput.value = saved; }
+} catch (e) {}
+nameInput.addEventListener('input', () => {
+  playerName = nameInput.value.trim().slice(0, 8) || '我';
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem('playerName', playerName === '我' ? '' : playerName); } catch (e) {}
+});
+// 排行榜点击收缩/展开
+document.getElementById('board').addEventListener('click', () => {
+  boardCollapsed = !boardCollapsed;
+  document.getElementById('board').classList.toggle('collapsed', boardCollapsed);
+});
+// 主菜单：黑洞外观选择 + 预览
+const stylePick = document.getElementById('stylePick');
+const prevCtx = document.getElementById('stylePrev').getContext('2d');
+stylePick.innerHTML = HOLE_STYLES.map((s, i) =>
+  `<button class="mapBtn styleBtn${i === selectedStyle ? ' sel' : ''}" data-idx="${i}"><span class="dot" style="background:${s.ring};box-shadow:0 0 5px ${s.ring}"></span>${s.name}</button>`
+).join('');
+stylePick.querySelectorAll('.styleBtn').forEach(b => b.addEventListener('click', () => {
+  selectedStyle = +b.dataset.idx;
+  stylePick.querySelectorAll('.styleBtn').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+}));
+function drawStylePreview(t) {
+  const st = HOLE_STYLES[selectedStyle];
+  const c = prevCtx, cw = 180, ch = 110, r = 34;
+  c.clearRect(0, 0, cw, ch);
+  c.save(); c.translate(cw / 2, ch / 2);
+  const ph = t / 1000;
+  for (let i = 0; i < 3; i++) {
+    const rr = r * (1.06 + i * .16);
+    const a0 = ph * 2.4 * (1 + i * .35) + i * 2.1;
+    c.globalAlpha = .34 - i * .09;
+    c.strokeStyle = st.ring; c.lineWidth = r * .075;
+    c.beginPath(); c.arc(0, 0, rr, a0, a0 + Math.PI * 1.25); c.stroke();
+  }
+  c.globalAlpha = 1;
+  paintHoleBody(c, st, r, ph);
+  c.restore();
+}
+document.getElementById('resumeBtn').addEventListener('click', resumeGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+document.getElementById('quitBtn').addEventListener('click', quitToMenu);
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  if (state === 'play') pauseGame();
+  else if (state === 'paused') resumeGame();
+});
+// 触屏加速按钮
+const bb = document.getElementById('boostBtn');
+bb.addEventListener('pointerdown', e => { input.boostBtn = true; bb.setPointerCapture(e.pointerId); e.preventDefault(); });
+bb.addEventListener('pointerup', () => { input.boostBtn = false; });
+bb.addEventListener('pointercancel', () => { input.boostBtn = false; });
+bb.addEventListener('lostpointercapture', () => { input.boostBtn = false; });
+
+// ================= 启动循环 =================
+function loop(t) {
+  const dt = Math.min((t - lastT) / 1000, .05);
+  lastT = t;
+  update(dt);
+  render();
+  if (state === 'menu') drawStylePreview(t); // 主菜单：外观预览动画
+  requestAnimationFrame(loop);
+}
+// 菜单背景先铺个世界（默认街道）
+spawnWorld(selectedMap);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
