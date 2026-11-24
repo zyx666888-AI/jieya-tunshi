@@ -47,6 +47,9 @@
 
   #boostBtn { position: fixed; right: 18px; bottom: 170px; z-index: 11; width: 66px; height: 66px; border-radius: 50%; border: 2px solid rgba(124,92,255,.7); background: rgba(10,14,22,.65); color: #cdbcff; font-size: 26px; pointer-events: auto; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
   #boostBtn:active { background: rgba(124,92,255,.35); }
+  #joyBase { position: fixed; left: 24px; bottom: 24px; z-index: 11; width: 128px; height: 128px; border-radius: 50%; border: 2px solid rgba(124,92,255,.55); background: rgba(10,14,22,.5); pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #joyBase.active { border-color: rgba(124,92,255,.9); background: rgba(10,14,22,.7); }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(124,92,255,.5); border: 2px solid rgba(255,255,255,.65); box-shadow: 0 0 12px rgba(124,92,255,.55); }
 
   /* 开始按钮：独立放在屏幕最右侧 */
   /* 开始按钮：独立放在屏幕最右侧（相对窗口固定，面板滚动时不动） */
@@ -106,6 +109,7 @@
 <button id="endRunBtn" class="hud hidden">🏁 结束本局</button>
 <button id="pauseBtn" class="hud hidden">⏸️</button>
 <button id="boostBtn" class="hud hidden">💨</button>
+<div id="joyBase" class="hud hidden"><div id="joyKnob"></div></div>
 <canvas id="miniMap" class="hidden" width="140" height="140"></canvas>
 <div id="toast"></div>
 <div id="milestone"></div>
@@ -117,7 +121,8 @@
     <div class="pickLabel" style="text-align:left;">我的昵称</div>
     <input id="nameInput" class="nameInput" maxlength="8" placeholder="我（最多 8 个字）">
     <div class="tips">
-      🖱️ 移动鼠标 / 手指拖动 —— 控制黑洞移动<br>
+      🕹️ 按住左下角<b>移动轮盘</b>拖动 —— 控制黑洞移动（推得越多越快）<br>
+      🖱️ 也支持移动鼠标 / WASD / 方向键<br>
       ⌨️ 也支持 WASD / 方向键，<b>长按空格加速</b>（体力上限随积分成长）<br>
       🟢 绿圈 = 可以吞噬 &nbsp;⚪ 白圈 = 还不够大<br>
       🕳️ 小心！比你大的黑洞可以把你也吞掉<br>
@@ -326,7 +331,7 @@ let me = null;
 let state = 'menu'; // menu | play | over
 let timeLeft = GAME_TIME;
 let cam = { x: MAP/2, y: MAP/2, zoom: 1 };
-let input = { mx: 0, my: 0, useMouse: false, keys: {} };
+let input = { mx: 0, my: 0, useMouse: false, keys: {}, joyX: 0, joyY: 0, joyActive: false };
 let lastT = 0, idTicker = 1;
 
 const BOT_NAMES = ['贪吃蛇洞', '深渊巨口', '小旋涡', '星际虫洞', '万物吞噬者', '混沌之眼', '次元裂缝', '饕餮', '银河黑洞', '虚无之口', '吞噬之星', '暗影漩涡'];
@@ -640,7 +645,7 @@ function startGame() {
   document.getElementById('pauseBtn').classList.remove('hidden');
   document.getElementById('pausePanel').classList.add('hidden');
   document.getElementById('board').classList.remove('hidden');
-  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'joyBase', 'miniMap'].forEach(id => document.getElementById(id).classList.remove('hidden'));
   document.getElementById('myScore').textContent = '0';
 }
 
@@ -767,7 +772,14 @@ function update(dt) {
   // 玩家输入
   if (!me.dead) {
     let dirx = 0, diry = 0, moving = false, maxSp = holeSpeed(me);
-    if (input.useMouse) {
+    const joyMag = Math.hypot(input.joyX, input.joyY);
+    if (input.joyActive && joyMag > .15) {
+      // 移动轮盘：按住左下角轮盘拖动，推得越多移得越快（死区 0.15）
+      moving = true;
+      const sp = maxSp * Math.min(1, joyMag);
+      dirx = input.joyX / joyMag * (sp / maxSp);
+      diry = input.joyY / joyMag * (sp / maxSp);
+    } else if (input.useMouse) {
       // 朝鼠标世界坐标移动
       const wx = cam.x + (input.mx - W/2) / cam.zoom;
       const wy = cam.y + (input.my - H/2) / cam.zoom;
@@ -1264,7 +1276,7 @@ function quitToMenu() {
   state = 'menu';
   me = null;
   ['pausePanel', 'deathPanel', 'endPanel', 'clearPanel', 'board'].forEach(id => document.getElementById(id).classList.add('hidden'));
-  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap', 'endRunBtn', 'pauseBtn'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'joyBase', 'miniMap', 'endRunBtn', 'pauseBtn'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('startPanel').classList.remove('hidden');
   spawnWorld(selectedMap); // 回到主菜单并预览当前所选地图
   document.getElementById('timer').textContent = '3:00';
@@ -1280,7 +1292,7 @@ function endGame() {
   document.getElementById('endRunBtn').classList.add('hidden');
   document.getElementById('pauseBtn').classList.add('hidden');
   document.getElementById('board').classList.add('hidden');
-  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'miniMap'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['timerBox', 'scoreBox', 'staminaBox', 'boostBtn', 'joyBase', 'miniMap'].forEach(id => document.getElementById(id).classList.add('hidden'));
   const sorted = [...world.holes].sort((a, b) => b.score - a.score);
   const myRank = sorted.findIndex(h => h.isMe) + 1;
   document.getElementById('endTitle').textContent =
@@ -1389,6 +1401,40 @@ bb.addEventListener('pointerdown', e => { input.boostBtn = true; bb.setPointerCa
 bb.addEventListener('pointerup', () => { input.boostBtn = false; });
 bb.addEventListener('pointercancel', () => { input.boostBtn = false; });
 bb.addEventListener('lostpointercapture', () => { input.boostBtn = false; });
+
+// 移动轮盘：按住拖动控制方向，推得越多移得越快
+const joyBase = document.getElementById('joyBase');
+const joyKnob = document.getElementById('joyKnob');
+const JOY_MAX = 40; // 摇杆最大偏移像素
+let joyPid = null;
+function joyMove(e) {
+  const r = joyBase.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const d = Math.hypot(dx, dy);
+  if (d > JOY_MAX) { dx = dx / d * JOY_MAX; dy = dy / d * JOY_MAX; }
+  joyKnob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+  input.joyX = dx / JOY_MAX; input.joyY = dy / JOY_MAX;
+  input.joyActive = true;
+  input.useMouse = false; // 轮盘优先，避免松手后仍朝旧触摸点漂移
+}
+function joyReset() {
+  joyPid = null;
+  joyBase.classList.remove('active');
+  joyKnob.style.transform = 'translate(0,0)';
+  input.joyActive = false; input.joyX = 0; input.joyY = 0;
+}
+joyBase.addEventListener('pointerdown', e => {
+  if (joyPid !== null) return;
+  joyPid = e.pointerId;
+  try { joyBase.setPointerCapture(e.pointerId); } catch (err) {}
+  joyBase.classList.add('active');
+  joyMove(e);
+  e.preventDefault();
+});
+joyBase.addEventListener('pointermove', e => { if (e.pointerId === joyPid) joyMove(e); });
+joyBase.addEventListener('pointerup', e => { if (e.pointerId === joyPid) joyReset(); });
+joyBase.addEventListener('pointercancel', e => { if (e.pointerId === joyPid) joyReset(); });
+joyBase.addEventListener('lostpointercapture', e => { if (e.pointerId === joyPid) joyReset(); });
 
 // ================= 启动循环 =================
 function loop(t) {
