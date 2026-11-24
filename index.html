@@ -121,7 +121,7 @@
     <div class="pickLabel" style="text-align:left;">我的昵称</div>
     <input id="nameInput" class="nameInput" maxlength="8" placeholder="我（最多 8 个字）">
     <div class="tips">
-      🕹️ 按住左下角<b>移动轮盘</b>拖动 —— 控制黑洞移动（推得越多越快）<br>
+      🕹️ 手指按住屏幕任意位置<b>拖动</b> —— 浮动轮盘跟着手指出现，控制黑洞移动（推得越多越快）<br>
       🖱️ 也支持移动鼠标 / WASD / 方向键<br>
       ⌨️ 也支持 WASD / 方向键，<b>长按空格加速</b>（体力上限随积分成长）<br>
       🟢 绿圈 = 可以吞噬 &nbsp;⚪ 白圈 = 还不够大<br>
@@ -1306,8 +1306,7 @@ function endGame() {
 
 // ================= 输入 =================
 canvas.addEventListener('mousemove', e => { input.mx = e.clientX; input.my = e.clientY; input.useMouse = true; });
-canvas.addEventListener('touchstart', e => { const t = e.touches[0]; input.mx = t.clientX; input.my = t.clientY; input.useMouse = true; e.preventDefault(); }, { passive: false });
-canvas.addEventListener('touchmove', e => { const t = e.touches[0]; input.mx = t.clientX; input.my = t.clientY; e.preventDefault(); }, { passive: false });
+// 触屏由下方 pointerdown/move/up 统一接管（浮动轮盘），不再用 touchstart 指向操控
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   input.keys[k] = true;
@@ -1402,39 +1401,53 @@ bb.addEventListener('pointerup', () => { input.boostBtn = false; });
 bb.addEventListener('pointercancel', () => { input.boostBtn = false; });
 bb.addEventListener('lostpointercapture', () => { input.boostBtn = false; });
 
-// 移动轮盘：按住拖动控制方向，推得越多移得越快
+// 浮动移动轮盘：手指按下屏幕任意位置即出现，拖动控制方向，推得越多移得越快
 const joyBase = document.getElementById('joyBase');
 const joyKnob = document.getElementById('joyKnob');
 const JOY_MAX = 40; // 摇杆最大偏移像素
 let joyPid = null;
-function joyMove(e) {
+function joySpawnAt(x, y) {
+  joyBase.style.left = (x - 64) + 'px'; // 轮盘 128px，手指按下点即轮盘中心
+  joyBase.style.top = (y - 64) + 'px';
+  joyBase.style.bottom = 'auto';
+  joyBase.classList.remove('hidden');
+  joyBase.classList.add('active');
+  joyKnob.style.transform = 'translate(0,0)';
+  input.joyActive = true; input.joyX = 0; input.joyY = 0;
+  input.useMouse = false; // 轮盘优先，避免同时朝触摸点漂移
+}
+function joyMoveAt(x, y) {
   const r = joyBase.getBoundingClientRect();
-  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  let dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2);
   const d = Math.hypot(dx, dy);
   if (d > JOY_MAX) { dx = dx / d * JOY_MAX; dy = dy / d * JOY_MAX; }
   joyKnob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
   input.joyX = dx / JOY_MAX; input.joyY = dy / JOY_MAX;
-  input.joyActive = true;
-  input.useMouse = false; // 轮盘优先，避免松手后仍朝旧触摸点漂移
 }
-function joyReset() {
+function joyRelease() {
   joyPid = null;
+  joyBase.classList.add('hidden');
   joyBase.classList.remove('active');
   joyKnob.style.transform = 'translate(0,0)';
   input.joyActive = false; input.joyX = 0; input.joyY = 0;
 }
-joyBase.addEventListener('pointerdown', e => {
+canvas.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') { // 鼠标：保持原有点击指向操控
+    input.mx = e.clientX; input.my = e.clientY; input.useMouse = true; return;
+  }
+  // 触屏：手指按下处生成浮动轮盘
   if (joyPid !== null) return;
   joyPid = e.pointerId;
-  try { joyBase.setPointerCapture(e.pointerId); } catch (err) {}
-  joyBase.classList.add('active');
-  joyMove(e);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  joySpawnAt(e.clientX, e.clientY);
   e.preventDefault();
 });
-joyBase.addEventListener('pointermove', e => { if (e.pointerId === joyPid) joyMove(e); });
-joyBase.addEventListener('pointerup', e => { if (e.pointerId === joyPid) joyReset(); });
-joyBase.addEventListener('pointercancel', e => { if (e.pointerId === joyPid) joyReset(); });
-joyBase.addEventListener('lostpointercapture', e => { if (e.pointerId === joyPid) joyReset(); });
+window.addEventListener('pointermove', e => {
+  if (e.pointerId === joyPid) { joyMoveAt(e.clientX, e.clientY); }
+  else if (e.pointerType === 'mouse') { input.mx = e.clientX; input.my = e.clientY; input.useMouse = true; }
+});
+window.addEventListener('pointerup', e => { if (e.pointerId === joyPid) joyRelease(); });
+window.addEventListener('pointercancel', e => { if (e.pointerId === joyPid) joyRelease(); });
 
 // ================= 启动循环 =================
 function loop(t) {
